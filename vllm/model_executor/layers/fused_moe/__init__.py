@@ -4,4 +4,5 @@ from vllm.model_executor.layers.fused_moe.fused_moe import (
 __all__ = [
     "fused_moe",
     "get_config_file_name",
+    "static_fused_moe",
 ]
