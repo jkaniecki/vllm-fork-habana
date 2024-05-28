@@ -13,6 +13,7 @@ from vllm import _custom_ops as ops
 from vllm.logger import init_logger
 from vllm.utils import is_hip
 from vllm.model_executor.layers.activation import SiluAndMul
+import vllm.hpu.utils as hpu_utils
 
 logger = init_logger(__name__)
 
@@ -481,7 +482,7 @@ def fused_moe(
                      dim=1)
 
 
-
+@hpu_utils.with_mark_steps
 def static_fused_moe(hidden_states, w1, w2, score, topk):
         B, D = hidden_states.shape
         num_experts = w1.shape[0]
