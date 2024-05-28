@@ -52,6 +52,9 @@ from vllm.model_executor.utils import set_weight_attrs
 from vllm.sequence import SamplerOutput
 from vllm.utils import print_warning_once, is_hpu
 
+if is_hpu():
+    from vllm.hpu.ops import static_fused_moe
+
 
 class MixtralMoE(nn.Module):
     """A tensor-parallel MoE implementation for Mixtral that shards each expert
@@ -229,7 +232,6 @@ class MixtralMoE(nn.Module):
         router_logits, _ = self.gate(hidden_states)
 
         if is_hpu():
-            from vllm.hpu.ops import static_fused_moe
             final_hidden_states = static_fused_moe(hidden_states,
                         self.w13_weight,
                         self.w2_weight,
