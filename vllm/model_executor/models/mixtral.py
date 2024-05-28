@@ -229,6 +229,7 @@ class MixtralMoE(nn.Module):
         router_logits, _ = self.gate(hidden_states)
 
         if is_hpu():
+            from vllm.hpu.ops import static_fused_moe
             final_hidden_states = static_fused_moe(hidden_states,
                         self.w13_weight,
                         self.w2_weight,
