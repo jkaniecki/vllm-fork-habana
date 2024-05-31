@@ -209,7 +209,7 @@ def _is_hpu() -> bool:
     except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
         if not os.path.exists('/dev/accel/accel0') and not os.path.exists('/dev/accel/accel_controlD0'):
             is_hpu_available = False
-    return is_hpu_available
+    return True
 
 
 def _is_cuda() -> bool:
