@@ -123,10 +123,9 @@ def silu_and_mul_wrapper(x: torch.Tensor) -> torch.Tensor:
 def static_fused_moe(hidden_states, w1, w2, score, topk):
     B, D = hidden_states.shape
     num_experts = w1.shape[0]
-    routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
+    routing_weights = F.softmax(score, dim=1)
     routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-    routing_weights = routing_weights.to(hidden_states.dtype)
     final_hidden_states = torch.zeros(
             (1, B, D), dtype=hidden_states.dtype, device=hidden_states.device
     )
