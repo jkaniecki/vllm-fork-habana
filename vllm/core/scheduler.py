@@ -23,7 +23,6 @@ ENABLE_ARTIFICIAL_PREEMPT = bool(
 ARTIFICIAL_PREEMPTION_PROB = 0.5
 ARTIFICIAL_PREEMPTION_MAX_CNT = 500
 
-VLLM_OVERSCHEDULE = os.environ.get('VLLM_OVERSCHEDULE', 'true') == 'true'
 
 class PreemptionMode(enum.Enum):
     """Preemption modes.
@@ -56,17 +55,14 @@ class SchedulingBudget:
     _num_batched_tokens: int = 0
     _num_curr_seqs: int = 0
 
-    def can_schedule(self, *, num_new_tokens: int, num_new_seqs: int, overschedule: int = 0):
+    def can_schedule(self, *, num_new_tokens: int, num_new_seqs: int):
         assert num_new_tokens != 0
         assert num_new_seqs != 0
         return (self.num_batched_tokens + num_new_tokens <= self.token_budget
-                and self.num_curr_seqs + num_new_seqs <= self.max_num_seqs + overschedule)
+                and self.num_curr_seqs + num_new_seqs <= self.max_num_seqs)
 
     def remaining_token_budget(self):
         return self.token_budget - self.num_batched_tokens
-
-    def remaining_seq_budget(self):
-        return self.max_num_seqs - self.num_curr_seqs
 
     def add_num_batched_tokens(self, req_id: str, num_batched_tokens: int):
         if req_id in self._requeset_ids_num_batched_tokens:
@@ -410,11 +406,7 @@ class Scheduler:
         # groups to preempt.
         now = time.time()
         running_queue = policy.sort_by_priority(now, running_queue)
-        i = 1
         while running_queue:
-            if i > self.scheduler_config.max_num_seqs:
-                break
-            i += 1
             seq_group = running_queue[0]
             num_running_tokens = self._get_num_new_tokens(
                 seq_group, SequenceStatus.RUNNING, enable_chunking, budget)
@@ -639,10 +631,6 @@ class Scheduler:
         leftover_waiting_sequences: Deque[SequenceGroup] = deque()
         i = 0
         max_prefill_batch_size = int(os.getenv("VLLM_PROMPT_BS_BUCKET_MAX", budget.max_num_seqs))
-        if budget.remaining_seq_budget() > 0 and VLLM_OVERSCHEDULE:
-            overschedule = max_prefill_batch_size
-        else:
-            overschedule = 0
         while self._passed_delay(time.time()) and waiting_queue and i < max_prefill_batch_size:
             i += 1
             seq_group = waiting_queue[0]
@@ -699,9 +687,9 @@ class Scheduler:
                     continue
 
             num_new_seqs = seq_group.get_max_num_running_seqs()
-
-            can_fit = budget.can_schedule(num_new_tokens=num_new_tokens, num_new_seqs=num_new_seqs, overschedule=overschedule)
-            if num_new_tokens == 0 or not can_fit:
+            if (num_new_tokens == 0
+                    or not budget.can_schedule(num_new_tokens=num_new_tokens,
+                                               num_new_seqs=num_new_seqs)):
                 break
 
             # Can schedule this request.
@@ -780,8 +768,7 @@ class Scheduler:
 
         assert (budget.num_batched_tokens <=
                 self.scheduler_config.max_num_batched_tokens)
-        if not VLLM_OVERSCHEDULE:
-            assert budget.num_curr_seqs <= self.scheduler_config.max_num_seqs
+        assert budget.num_curr_seqs <= self.scheduler_config.max_num_seqs
 
         # Update waiting requests.
         self.waiting = remaining_waiting
