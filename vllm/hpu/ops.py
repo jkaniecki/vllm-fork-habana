@@ -12,15 +12,10 @@ import habana_frameworks.torch as htorch
 from typing import List, Optional, Tuple
 
 import vllm.hpu.utils as hpu_utils
+from vllm.model_executor.layers.activation import SiluAndMul
+
 
 PA_SPLIT_VALUE = (os.environ.get('PA_SPLIT_VALUE', '1') == '1')
-
-
-def silu_and_mul(output, input):
-    d = input.shape[-1] // 2
-    silu = torch.nn.SiLU().to(input.device)
-    x, y = torch.split(input, d, dim=-1)
-    output.copy_(silu(x) * y)
 
 
 def gelu_new(output, input):
@@ -131,17 +126,10 @@ def awq_gemm(*args):
     raise NotImplementedError
 
 
-def silu_and_mul_wrapper(x: torch.Tensor) -> torch.Tensor:
-    d = x.shape[-1] // 2
-    output_shape = (x.shape[:-1] + (d, ))
-    out = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-    silu_and_mul(out, x)
-    return out
-
-
 def static_fused_moe(hidden_states, w1, w2, score, topk):
     B, D = hidden_states.shape
     num_experts = w1.shape[0]
+    silu_and_mul = SiluAndMul()
     routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
     routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
@@ -159,12 +147,10 @@ def static_fused_moe(hidden_states, w1, w2, score, topk):
     htorch.core.mark_step()
 
     for expert_idx in range(num_experts):
-        padded_weight = padded_weights[expert_idx]
-        current_state_static = hidden_states.reshape(-1, D)
-        w_output = silu_and_mul_wrapper(torch.matmul(current_state_static, w1[expert_idx].transpose(0, 1)))
+        w_output = torch.matmul(hidden_states, w1[expert_idx].transpose(0, 1))
+        w_output = silu_and_mul(w_output)
         w_output = torch.matmul(w_output, w2[expert_idx].transpose(0, 1))
-        current_hidden_states_static = w_output * padded_weight
-        final_hidden_states += current_hidden_states_static
+        final_hidden_states += w_output * padded_weights[expert_idx]
         htorch.core.mark_step()
 
     return final_hidden_states.view(-1, D)
