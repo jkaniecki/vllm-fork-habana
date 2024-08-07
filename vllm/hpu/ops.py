@@ -12,8 +12,6 @@ import habana_frameworks.torch as htorch
 from typing import List, Optional, Tuple
 
 import vllm.hpu.utils as hpu_utils
-from vllm.model_executor.layers.activation import SiluAndMul
-
 
 PA_SPLIT_VALUE = (os.environ.get('PA_SPLIT_VALUE', '1') == '1')
 
@@ -126,10 +124,14 @@ def awq_gemm(*args):
     raise NotImplementedError
 
 
+def silu_and_mul(x: torch.Tensor) -> torch.Tensor:
+    d = x.shape[-1] // 2
+    return F.silu(x[..., :d]) * x[..., d:]
+
+
 def static_fused_moe(hidden_states, w1, w2, score, topk):
     B, D = hidden_states.shape
     num_experts = w1.shape[0]
-    silu_and_mul = SiluAndMul()
     routing_weights = F.softmax(score, dim=1, dtype=torch.float32)
     routing_weights, selected_experts = torch.topk(routing_weights, topk, dim=-1)
     routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
