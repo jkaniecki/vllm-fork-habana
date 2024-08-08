@@ -15,6 +15,7 @@ import vllm.hpu.utils as hpu_utils
 
 PA_SPLIT_VALUE = (os.environ.get('PA_SPLIT_VALUE', '1') == '1')
 
+
 def fetch_from_cache(cache, blocks, permutations):
     return [
         cache.index_select(0, blocks[:, i]).permute(permutations)
