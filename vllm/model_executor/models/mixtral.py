@@ -292,11 +292,16 @@ class MixtralModel(nn.Module):
             assert intermediate_tensors is not None
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
+        if is_hpu:
+            import habana_frameworks.torch as htorch
+            htorch.core.mark_step()
         for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
             hidden_states, residual = layer(positions, hidden_states,
                                             kv_caches[i - self.start_layer],
                                             attn_metadata, residual)
+            if is_hpu:
+                htorch.core.mark_step()
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,
