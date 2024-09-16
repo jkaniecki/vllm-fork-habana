@@ -790,7 +790,6 @@ class Scheduler:
         be swapped or preempted.
         """
         # Include running requests to the budget.
-        print('created budget')
         budget = SchedulingBudget(
             token_budget=self.scheduler_config.max_num_batched_tokens,
             max_num_seqs=self.scheduler_config.max_num_seqs,
@@ -860,12 +859,6 @@ class Scheduler:
         assert len(running_scheduled.prefill_seq_groups) == 0
         assert len(swapped_in.prefill_seq_groups) == 0
 
-        if len(prefills.seq_groups) == 0:
-            print(
-                f'scheduled {len(running_scheduled.decode_seq_groups)} decodes'
-            )
-        else:
-            print(f'scheduled {len(prefills.seq_groups)} prefills')
         return SchedulerOutputs(
             scheduled_seq_groups=(prefills.seq_groups +
                                   running_scheduled.decode_seq_groups +
