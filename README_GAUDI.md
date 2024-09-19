@@ -81,6 +81,7 @@ Supported Features
 -   Inference with [HPU
     Graphs](https://docs.habana.ai/en/latest/PyTorch/Inference_on_PyTorch/Inference_Using_HPU_Graphs.html)
     for accelerating low-batch latency and throughput
+-   INC quantization
 
 Unsupported Features
 ====================
@@ -88,7 +89,7 @@ Unsupported Features
 -   Beam search
 -   LoRA adapters
 -   Attention with Linear Biases (ALiBi)
--   Quantization (AWQ, FP8 E5M2, FP8 E4M3)
+-   AWQ quantization
 -   Prefill chunking (mixed-batch inferencing)
 
 Supported Configurations
@@ -315,9 +316,9 @@ mark 90% of free device memory at that point as usable. Next, KV cache
 gets allocated, model is warmed up, and HPU Graphs are captured.
 Environment variable `VLLM_GRAPH_RESERVED_MEM` defines the ratio of
 memory reserved for HPU Graphs capture. With its default value
-(`VLLM_GRAPH_RESERVED_MEM=0.4`), 40% of usable memory will be reserved
+(`VLLM_GRAPH_RESERVED_MEM=0.1`), 10% of usable memory will be reserved
 for graph capture (later referred to as \"usable graph memory\"), and
-the remaining 60% will be utilized for KV cache. Environment variable
+the remaining 90% will be utilized for KV cache. Environment variable
 `VLLM_GRAPH_PROMPT_RATIO` determines the ratio of usable graph memory
 reserved for prefill and decode graphs. By default
 (`VLLM_GRAPH_PROMPT_RATIO=0.5`), both stages have equal memory
@@ -445,7 +446,7 @@ Environment variables
 -   `VLLM_SKIP_WARMUP`: if `true`, warmup will be skipped, `false` by
     default
 -   `VLLM_GRAPH_RESERVED_MEM`: percentage of memory dedicated for
-    HPUGraph capture, `0.4` by default
+    HPUGraph capture, `0.1` by default
 -   `VLLM_GRAPH_PROMPT_RATIO`: percentage of reserved graph memory
     dedicated for prompt graphs, `0.5` by default
 -   `VLLM_GRAPH_PROMPT_STRATEGY`: strategy determining order of prompt
@@ -455,12 +456,12 @@ Environment variables
 -   `VLLM_{phase}_{dim}_BUCKET_{param}` - collection of 12 environment
     variables configuring ranges of bucketing mechanism
     -   `{phase}` is either `PROMPT` or `DECODE`
-    -   `{dim}` is either `BS` or `SEQ`
+    -   `{dim}` is either `BS`, `SEQ` or `BLOCK`
     -   `{param}` is either `MIN`, `STEP` or `MAX`
     -   Default values:
         - Prompt:
            -   batch size min (`VLLM_PROMPT_BS_BUCKET_MIN`): `1`
-           -   batch size step (`VLLM_PROMPT_BS_BUCKET_STEP`): `32`
+           -   batch size step (`VLLM_PROMPT_BS_BUCKET_STEP`): `min(max_num_seqs, 32)`
            -   batch size max (`VLLM_PROMPT_BS_BUCKET_MAX`):
                     `min(max_num_seqs, 64)`
            -   sequence length min (`VLLM_PROMPT_SEQ_BUCKET_MIN`):
@@ -468,20 +469,20 @@ Environment variables
            -   sequence length step
                     (`VLLM_PROMPT_SEQ_BUCKET_STEP`): `block_size`
            -   sequence length max (`VLLM_PROMPT_SEQ_BUCKET_MAX`):
-                    `1024`
+                    `max_model_len`
 
         - Decode:
-            - batch size min (`VLLM_DECODE_BS_BUCKET_MIN`): `1`
+            - batch size min (`VLLM_DECODE_BS_BUCKET_MIN`): `min(max_num_seqs, 32)`
             -   batch size step (`VLLM_DECODE_BS_BUCKET_STEP`):
-                    `128`
+                    `min(max_num_seqs, 32)`
             -   batch size max (`VLLM_DECODE_BS_BUCKET_MAX`):
                     `max_num_seqs`
-            -   sequence length min (`VLLM_DECODE_SEQ_BUCKET_MIN`):
-                    `block_size`
-            -   sequence length step
-                    (`VLLM_DECODE_SEQ_BUCKET_STEP`): `block_size`
-            -   sequence length max (`VLLM_DECODE_SEQ_BUCKET_MAX`):
-                    `2048`
+            -   block size min (`VLLM_DECODE_BLOCK_BUCKET_MIN`):
+                    `128`
+            -   block size step
+                    (`VLLM_DECODE_BLOCK_BUCKET_STEP`): `128`
+            -   block size max (`VLLM_DECODE_BLOCK_BUCKET_MAX`):
+                    `max(128, (max_num_seqs*max_model_len)/block_size)`
 
 Additionally, there are HPU PyTorch Bridge environment variables
 impacting vLLM execution:
