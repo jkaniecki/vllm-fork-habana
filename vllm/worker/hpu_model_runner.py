@@ -611,6 +611,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                                 'false').lower() == 'true'
         # For multi-step scheduling
         self.cached_step_outputs: List[torch.Tensor] = []
+        self.cached_prompt_outputs: List[SamplerOutput] = []
+        self.prev_model_input: ModelInputForHPUWithSamplingMetadata = None
 
     def _set_gc_threshold(self) -> None:
         # Read https://docs.python.org/3/library/gc.html#gc.set_threshold
@@ -2025,14 +2027,6 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
         num_steps: int = 1,
         warmup_mode=False,
     ) -> Optional[Union[List[SamplerOutput], IntermediateTensors]]:
-        if not model_input.is_first_multi_step:
-            if not model_input.is_last_step:
-                # not first or last multi-step
-                return []
-            # last multi-step
-            output = self._decode_sampler_outputs(
-                model_input) if self.is_driver_worker else []
-            torch.hpu.synchronize()
         if model_input.is_first_multi_step:
             # first multi-step
             if self.lora_config:
@@ -2079,6 +2073,17 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
                     {"bypass_hpu_graphs": not use_graphs})
 
             htorch.core.mark_step()
+            # Delayed sampling
+
+            if self.cached_prompt_outputs:
+                output = self.cached_prompt_outputs.pop(0) if self.is_driver_worker else []
+            else:
+                if not self.cached_step_outputs:
+                    self.prev_model_input = model_input
+                output = self._decode_sampler_outputs(
+                    self.prev_model_input, num_steps) if self.is_driver_worker else []
+                torch.hpu.synchronize()
+
             if self.is_driver_worker:
                 model_event_name = ("model_"
                                     f"{'prompt' if is_prompt else 'decode'}_"
@@ -2148,21 +2153,24 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
                     continue
 
                 if model_input.async_callback is not None:
-                    model_input.async_callback()
+                   model_input.async_callback()
                 # Sample the next token.
                 with self.profiler.record_event(
                         'internal', ('sample_'
                                      f'{"prompt" if is_prompt else "decode"}_'
                                      f'bs{batch_size}_'
                                      f'seq{seq_len}')):
-                    output = self.model.sample(
+                    prev_output = self.model.sample(
                         logits=logits,
                         sampling_metadata=sampling_metadata,
                     )
                     if num_steps > 1:
-                        output = output.sampled_token_ids
+                        prev_output = prev_output.sampled_token_ids
                         self.cached_step_outputs.append(
-                            output.detach().clone())
+                            prev_output.detach().clone())
+                    else:
+                        output = prev_output
+
                 htorch.core.mark_step()
                 if i < num_steps - 1:
                     if i == 0:
@@ -2195,7 +2203,7 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
                                     return []
 
                     result = self._prepare_decode(seq_group_metadata_list,
-                                                  output=output)
+                                                  output=prev_output)
                     execute_model_kwargs.update({
                         "input_ids":
                         result.input_tokens,
@@ -2225,16 +2233,25 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
                     real_batch_size=real_batch_size,
                     is_prompt=is_prompt)
                 self.profiler.record_counter(self.event_start, counters)
-            if num_steps == 1:
-                return [output] if self.is_driver_worker else []
-            else:
-                return []
-        return output if type(output) is list else [output]
+            
+            self.prev_model_input = model_input
 
-    def _decode_sampler_outputs(self, model_input):
+            return output if type(output) is list else [output]
+        
+
+        return []
+
+    def _decode_sampler_outputs(self, model_input, num_steps):
         use_async_out_proc = model_input.async_callback is not None
         sampler_outputs = []
-        num_outputs = len(self.cached_step_outputs)
+        num_outputs = len(self.cached_prompt_outputs)
+        if num_outputs == 0:
+            dummy_sampler_dim = 0
+            for seq_group in model_input.sampling_metadata.seq_groups:
+                dummy_sampler_dim += len(seq_group.seq_ids)
+            for _ in range(num_steps):
+                self.cached_step_outputs.append(torch.zeros((dummy_sampler_dim, 1), device="hpu", dtype=torch.int))
+            num_outputs = num_steps
         for i in range(num_outputs):
             next_token_ids = self.cached_step_outputs.pop(0)
             next_token_ids = next_token_ids.cpu().tolist()
