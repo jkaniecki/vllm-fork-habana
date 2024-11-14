@@ -963,19 +963,19 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         else:
             prefix_block_list_tensor = None
 
-        input_tokens = make_tensor_with_pad(input_tokens,  # type: ignore
+        input_tokens = make_tensor_with_pad(input_tokens,
                                             max_len=max_prompt_len,
                                             pad=0,
                                             dtype=torch.long,
                                             device='cpu')
 
-        input_positions = make_tensor_with_pad(input_positions,  # type: ignore
+        input_positions = make_tensor_with_pad(input_positions,
                                                max_len=max_prompt_len,
                                                pad=0,
                                                dtype=torch.long,
                                                device='cpu')
 
-        slot_mapping = make_tensor_with_pad(slot_mapping,  # type: ignore
+        slot_mapping = make_tensor_with_pad(slot_mapping,
                                             max_len=max_prompt_len,
                                             pad=_PAD_SLOT_ID,
                                             dtype=torch.long,
@@ -992,10 +992,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         if prefix_block_list_tensor:
             prefix_block_list_tensor = prefix_block_list_tensor.to(
               self.device, non_blocking=True)
-        input_tokens = input_tokens.to(self.device, non_blocking=True)
-        input_positions = input_positions.to(self.device, non_blocking=True)
-        slot_mapping = slot_mapping.to(self.device, non_blocking=True)
-        seq_lens_tensor = seq_lens_tensor.to(self.device, non_blocking=True)
+        input_tokens = input_tokens.to(  # type: ignore
+            self.device, non_blocking=True)
+        input_positions = input_positions.to(  # type: ignore
+            self.device, non_blocking=True)
+        slot_mapping = slot_mapping.to(  # type: ignore
+            self.device, non_blocking=True)
+        seq_lens_tensor = seq_lens_tensor.to(
+            self.device, non_blocking=True)
         context_lens_tensor = context_lens_tensor.to(
           self.device, non_blocking=True)
 
@@ -1102,14 +1106,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 block_tables.append(block_table)
 
         if output is None:
-            input_tokens = torch.tensor(input_tokens,  # type: ignore
+            input_tokens = torch.tensor(input_tokens,
                                         dtype=torch.long,
                                         device='cpu')
         else:
             real_batch_size = len(seq_group_metadata_list)
             input_tokens = output[:real_batch_size]
 
-        input_positions = torch.tensor(input_positions,  # type: ignore
+        input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
                                        device='cpu')
 
@@ -1153,25 +1157,31 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
 
-        block_list = torch.tensor(block_list,  # type: ignore
+        block_list = torch.tensor(block_list,
                                   dtype=torch.int,
                                   device='cpu')
-        block_groups = torch.tensor(block_groups,  # type: ignore
+        block_groups = torch.tensor(block_groups,
                                     dtype=torch.int,
                                     device='cpu')
-        block_usage = torch.tensor(block_usage,  # type: ignore
+        block_usage = torch.tensor(block_usage,
                                    dtype=self.model_config.dtype,
                                    device='cpu')
-        slot_mapping = torch.tensor(slot_mapping,  # type: ignore
+        slot_mapping = torch.tensor(slot_mapping,
                                     dtype=torch.long,
                                     device='cpu')
 
-        input_tokens = input_tokens.to(self.device, non_blocking=True)
-        input_positions = input_positions.to(self.device, non_blocking=True)
-        block_list = block_list.to(self.device, non_blocking=True)
-        block_groups = block_groups.to(self.device, non_blocking=True)
-        block_usage = block_usage.to(self.device, non_blocking=True)
-        slot_mapping = slot_mapping.to(self.device, non_blocking=True)
+        input_tokens = input_tokens.to(  # type: ignore
+            self.device, non_blocking=True)
+        input_positions = input_positions.to(  # type: ignore
+            self.device, non_blocking=True)
+        block_list = block_list.to(  # type: ignore
+            self.device, non_blocking=True)
+        block_groups = block_groups.to(  # type: ignore
+            self.device, non_blocking=True)
+        block_usage = block_usage.to(  # type: ignore
+            self.device, non_blocking=True)
+        slot_mapping = slot_mapping.to(  # type: ignore
+            self.device, non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=False,
