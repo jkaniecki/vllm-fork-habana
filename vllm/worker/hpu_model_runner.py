@@ -392,8 +392,8 @@ class HpuModelAdapter:
             attn_metadata = self._set_block_mapping(attn_metadata, batch_size,
                                                     device, dtype)
             attn_metadata = self._set_block_scales(attn_metadata, device)
-        attn_metadata = self._set_indices_and_offsets(attn_metadata, 
-                                                      self.block_size, 
+        attn_metadata = self._set_indices_and_offsets(attn_metadata,
+                                                      self.block_size,
                                                       attn_metadata.is_prompt)
         return attn_metadata
 
@@ -1000,7 +1000,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         slot_mapping = slot_mapping.to(  # type: ignore
             self.device, non_blocking=True)
         seq_lens_tensor = seq_lens_tensor.to(self.device, non_blocking=True)
-        context_lens_tensor = context_lens_tensor.to(self.device, 
+        context_lens_tensor = context_lens_tensor.to(self.device,
                                                      non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
