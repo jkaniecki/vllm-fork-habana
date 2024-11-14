@@ -990,12 +990,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                            device='cpu')
 
         if prefix_block_list_tensor:
-            prefix_block_list_tensor = prefix_block_list_tensor.to(self.device, non_blocking=True)
+            prefix_block_list_tensor = prefix_block_list_tensor.to(
+              self.device, non_blocking=True)
         input_tokens = input_tokens.to(self.device, non_blocking=True)
         input_positions = input_positions.to(self.device, non_blocking=True)
         slot_mapping = slot_mapping.to(self.device, non_blocking=True)
         seq_lens_tensor = seq_lens_tensor.to(self.device, non_blocking=True)
-        context_lens_tensor = context_lens_tensor.to(self.device, non_blocking=True)
+        context_lens_tensor = context_lens_tensor.to(
+          self.device, non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=True,
