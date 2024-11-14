@@ -392,8 +392,9 @@ class HpuModelAdapter:
             attn_metadata = self._set_block_mapping(attn_metadata, batch_size,
                                                     device, dtype)
             attn_metadata = self._set_block_scales(attn_metadata, device)
-        attn_metadata = self._set_indices_and_offsets(
-            attn_metadata, self.block_size, attn_metadata.is_prompt)
+        attn_metadata = self._set_indices_and_offsets(attn_metadata, 
+                                                      self.block_size, 
+                                                      attn_metadata.is_prompt)
         return attn_metadata
 
     def forward(self, *args, **kwargs):
@@ -991,17 +992,16 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
 
         if prefix_block_list_tensor:
             prefix_block_list_tensor = prefix_block_list_tensor.to(
-              self.device, non_blocking=True)
+                self.device, non_blocking=True)
         input_tokens = input_tokens.to(  # type: ignore
             self.device, non_blocking=True)
         input_positions = input_positions.to(  # type: ignore
             self.device, non_blocking=True)
         slot_mapping = slot_mapping.to(  # type: ignore
             self.device, non_blocking=True)
-        seq_lens_tensor = seq_lens_tensor.to(
-            self.device, non_blocking=True)
-        context_lens_tensor = context_lens_tensor.to(
-          self.device, non_blocking=True)
+        seq_lens_tensor = seq_lens_tensor.to(self.device, non_blocking=True)
+        context_lens_tensor = context_lens_tensor.to(self.device, 
+                                                     non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=True,
@@ -1157,9 +1157,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
 
-        block_list = torch.tensor(block_list,
-                                  dtype=torch.int,
-                                  device='cpu')
+        block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
                                     dtype=torch.int,
                                     device='cpu')
