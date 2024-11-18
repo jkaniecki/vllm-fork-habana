@@ -960,8 +960,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
 
             prefix_block_list_tensor = torch.tensor(prefix_block_list,
                                                     dtype=torch.long,
-                                                    device='cpu',
-                                                    pin_memory=self.pin_memory)
+                                                    device='cpu')
         else:
             prefix_block_list_tensor = None
 
@@ -969,32 +968,27 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                             max_len=max_prompt_len,
                                             pad=0,
                                             dtype=torch.long,
-                                            device='cpu',
-                                            pin_memory=self.pin_memory)
+                                            device='cpu')
 
         input_positions = make_tensor_with_pad(input_positions,
                                                max_len=max_prompt_len,
                                                pad=0,
                                                dtype=torch.long,
-                                               device='cpu',
-                                               pin_memory=self.pin_memory)
+                                               device='cpu')
 
         slot_mapping = make_tensor_with_pad(slot_mapping,
                                             max_len=max_prompt_len,
                                             pad=_PAD_SLOT_ID,
                                             dtype=torch.long,
-                                            device='cpu',
-                                            pin_memory=self.pin_memory)
+                                            device='cpu')
 
         seq_lens_tensor = torch.tensor(seq_lens,
                                        dtype=torch.long,
-                                       device='cpu',
-                                       pin_memory=self.pin_memory)
+                                       device='cpu')
 
         context_lens_tensor = torch.tensor(context_lens,
                                            dtype=torch.long,
-                                           device='cpu',
-                                           pin_memory=self.pin_memory)
+                                           device='cpu')
 
         if prefix_block_list_tensor:
             prefix_block_list_tensor = prefix_block_list_tensor.to(
@@ -1114,16 +1108,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         if output is None:
             input_tokens = torch.tensor(input_tokens,
                                         dtype=torch.long,
-                                        device='cpu',
-                                        pin_memory=self.pin_memory)
+                                        device='cpu')
         else:
             real_batch_size = len(seq_group_metadata_list)
             input_tokens = output[:real_batch_size]
 
         input_positions = torch.tensor(input_positions,
                                        dtype=torch.long,
-                                       device='cpu',
-                                       pin_memory=self.pin_memory)
+                                       device='cpu')
 
         num_decode_tokens = sum(seq_lens)
 
@@ -1165,22 +1157,16 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
 
-        block_list = torch.tensor(block_list,
-                                  dtype=torch.int,
-                                  device='cpu',
-                                  pin_memory=self.pin_memory)
+        block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
                                     dtype=torch.int,
-                                    device='cpu',
-                                    pin_memory=self.pin_memory)
+                                    device='cpu')
         block_usage = torch.tensor(block_usage,
                                    dtype=self.model_config.dtype,
-                                   device='cpu',
-                                   pin_memory=self.pin_memory)
+                                   device='cpu')
         slot_mapping = torch.tensor(slot_mapping,
                                     dtype=torch.long,
-                                    device='cpu',
-                                    pin_memory=self.pin_memory)
+                                    device='cpu')
 
         input_tokens = input_tokens.to(  # type: ignore
             self.device, non_blocking=True)
