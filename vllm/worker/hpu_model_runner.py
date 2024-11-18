@@ -379,8 +379,8 @@ class HpuModelAdapter:
             offsets = None
         else:
             offsets = torch.fmod(slot_mapping, block_size)
-        metadata = metadata._replace(block_offsets=offsets)
-        metadata = metadata._replace(block_indices=indices)
+        metadata = metadata._replace(block_offsets=offsets, 
+                                     block_indices=indices)
         return metadata
 
     def _update_metadata(self, attn_metadata, batch_size, seq_len, device,
