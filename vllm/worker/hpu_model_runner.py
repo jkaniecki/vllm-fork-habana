@@ -2235,7 +2235,8 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
                         for i, seq_group_metadata in enumerate(
                                 seq_group_metadata_list):
                             # Skip empty steps
-                            seq_group_metadata.state.current_step += (num_steps - 2)
+                            seq_group_metadata.state.current_step += (
+                                num_steps - 2)
                             # Cache the original output token ids
                             cache_orig_output_tokens_len.append({})
                             for j, data in seq_group_metadata.seq_data.items():
