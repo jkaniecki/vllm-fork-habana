@@ -115,8 +115,7 @@ class HPUAttentionImpl(AttentionImpl, torch.nn.Module):
         self.matmul_av = Matmul()
         self.batch2block_matmul = Matmul()
         self.block2batch_matmul = Matmul()
-        self.k_cache = VLLMKVCache()
-        self.v_cache = VLLMKVCache()
+        self.kv_cache = VLLMKVCache()
         self.num_kv_heads = num_heads if num_kv_heads is None else num_kv_heads
         self.sliding_window = sliding_window
         self.alibi_slopes = alibi_slopes
@@ -179,16 +178,12 @@ class HPUAttentionImpl(AttentionImpl, torch.nn.Module):
             key = key.unflatten(0, (block_indices.size(0), -1))
             value = value.unflatten(0, (block_indices.size(0), -1))
         if kv_cache is not None:
-            key_cache, value_cache = HPUPagedAttention.split_kv_cache(
-                kv_cache, self.num_kv_heads, self.head_size)
-
+            kv_values = torch.stack((key, value), dim=0)
             # Reshape the input keys and values and store them in the cache.
             # If kv_cache is not provided, the new key and value tensors are
             # not cached. This happens during the initial memory profiling run.
-            key_cache = self.k_cache(key, key_cache, block_indices,
-                                     block_offsets)
-            value_cache = self.v_cache(value, value_cache, block_indices,
-                                       block_offsets)
+            kv_cache = self.kv_cache(kv_values, kv_cache, block_indices,
+                                      block_offsets)
 
         if attn_metadata.is_prompt:
             # Prompt run.
@@ -229,23 +224,23 @@ class HPUAttentionImpl(AttentionImpl, torch.nn.Module):
                     query=query.view(query_shape),
                     key=key.view(kv_shape),
                     value=value.view(kv_shape),
-                    key_cache=key_cache,
-                    value_cache=value_cache,
+                    key_cache=kv_cache[0],
+                    value_cache=kv_cache[1],
                     block_list=attn_metadata.block_list,
                     attn_bias=attn_metadata.attn_bias,
                     scale=self.scale,
                     matmul_qk_op=self.matmul_qk,
                     matmul_av_op=self.matmul_av,
                     softmax_op=self.softmax,
-                    keys_fetch_func=self.k_cache.fetch_from_cache,
-                    values_fetch_func=self.v_cache.fetch_from_cache)
+                    keys_fetch_func=self.kv_cache.fetch_from_cache,
+                    values_fetch_func=self.kv_cache.fetch_from_cache)
             output = out.reshape(batch_size, seq_len, hidden_size)
         else:
             # Decoding run.
             output = HPUPagedAttention.forward_decode(
                 query=query,
-                key_cache=key_cache,
-                value_cache=value_cache,
+                key_cache=kv_cache[0],
+                value_cache=kv_cache[1],
                 block_list=attn_metadata.block_list,
                 block_mapping=attn_metadata.block_mapping,
                 block_bias=attn_metadata.attn_bias,
@@ -256,8 +251,8 @@ class HPUAttentionImpl(AttentionImpl, torch.nn.Module):
                 matmul_av_op=self.matmul_av,
                 batch2block_matmul_op=self.batch2block_matmul,
                 block2batch_matmul_op=self.block2batch_matmul,
-                keys_fetch_func=self.k_cache.fetch_from_cache,
-                values_fetch_func=self.v_cache.fetch_from_cache)
+                keys_fetch_func=self.kv_cache.fetch_from_cache,
+                values_fetch_func=self.kv_cache.fetch_from_cache)
         # Reshape the output tensor.
         return output.view(batch_size, seq_len, hidden_size)
 

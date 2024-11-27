@@ -501,6 +501,7 @@ class HpuModelAdapter:
             indices = indices.unflatten(0, (-1, block_size))[:, 0]
             offsets = None
         else:
+            import pdb; pdb.set_trace()
             offsets = torch.fmod(slot_mapping, block_size)
         metadata = metadata._replace(block_offsets=offsets,
                                      block_indices=indices)
