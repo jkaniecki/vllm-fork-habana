@@ -518,7 +518,7 @@ class MllamaVisionEncoder(nn.Module):
 
         for i, encoder_layer in enumerate(self.layers):
             if i in self.output_hidden_states:
-                encoder_states.index_copy_(0, hidden_states_idx, hidden_states)
+                encoder_states.index_copy_(0, hidden_states_idx, hidden_states.unsqueeze(0))
                 hidden_states_idx.add_(1)
             hidden_states = encoder_layer(
                 hidden_states,
@@ -526,7 +526,7 @@ class MllamaVisionEncoder(nn.Module):
             )
 
         if len(self.layers) - 1 in self.output_hidden_states:
-            encoder_states.index_copy_(0, hidden_states_idx, hidden_states)
+            encoder_states.index_copy_(0, hidden_states_idx, hidden_states.unsqueeze(0))
 
         return hidden_states, encoder_states.permute(1, 2, 3, 0)
 
