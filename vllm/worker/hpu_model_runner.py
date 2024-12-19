@@ -1011,6 +1011,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                      slot_mapping=slot_mapping,
                                      lora_ids=lora_ids)
 
+
+    def _prepare_cross_attn_states(
+        self,
+        seq_group_metadata_list: List[SequenceGroupMetadata],
+    ):
+        
+
+
     def _prepare_decode(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
@@ -1020,6 +1028,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         input_positions: List[List[int]] = []
         slot_mapping: List[List[int]] = []
         seq_lens: List[int] = []
+        encoder_seq_lens: List[int] = []
         block_tables: List[List[int]] = []
         lora_index_mapping: List[List[int]] = []
         lora_prompt_mapping: List[List[int]] = []
@@ -1039,6 +1048,11 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             seq_ids = list(seq_group_metadata.seq_data.keys())
             lora_id = seq_group_metadata.lora_int_id
             lora_ids.append(lora_id)
+            if seq_group_metadata.encoder_seq_data is not None:
+                encoder_seq_len = (
+                    seq_group_metadata.encoder_seq_data.get_len()
+                    if seq_group_metadata.encoder_seq_data else 0)
+                encoder_seq_lens.append(encoder_seq_len)
 
             if lora_id > 0:
                 lora_requests.add(seq_group_metadata.lora_request)
@@ -1130,6 +1144,17 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
 
+        if len(encoder_seq_lens) > 0:
+            real_batch_size = len(seq_group_metadata_list)
+            batch_size_padded = self.bucketing_ctx.get_padded_batch_size(
+                real_batch_size, False)
+            batch_size_padding = batch_size_padded - real_batch_size
+            if batch_size_padding > 0:
+                encoder_seq_lens.extend(encoder_seq_lens[0]
+                                        for _ in range(batch_size_padding))
+        else:
+            encoder_seq_lens = None
+
         block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
                                     dtype=torch.int,
@@ -1140,6 +1165,13 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         slot_mapping = torch.tensor(slot_mapping,
                                     dtype=torch.long,
                                     device='cpu')
+        
+        if encoder_seq_lens is not None:
+            encoder_seq_lens_tensor = torch.tensor(encoder_seq_lens,
+                                        dtype=torch.long,
+                                        device='cpu')
+            encoder_seq_lens_tensor = encoder_seq_lens_tensor.to(  # type: ignore
+                self.device, non_blocking=True)
 
         input_tokens = input_tokens.to(  # type: ignore
             self.device, non_blocking=True)
@@ -1165,6 +1197,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             block_groups=block_groups,
             attn_bias=None,
             seq_lens_tensor=None,
+            encoder_seq_lens=encoder_seq_lens,
+            encoder_seq_lens_tensor=encoder_seq_lens_tensor,
             context_lens_tensor=None,
             num_prefills=0,
             num_prefill_tokens=0,
