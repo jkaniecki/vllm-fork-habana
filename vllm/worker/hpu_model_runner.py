@@ -135,7 +135,7 @@ def flatten(in_list):
     return list(itertools.chain(*in_list))
 
 
-def get_decoder_layer_suffix(model_type):
+def get_target_layer_suffix_list(model_type) -> list[str]:
     # This sets the suffix for the hidden layer name, which is controlled by
     # VLLM_CONFIG_HIDDEN_LAYERS. The default suffix is "DecoderLayer," which is
     # applicable for most language models such as LLaMA, Qwen, and BART. If the
@@ -145,13 +145,17 @@ def get_decoder_layer_suffix(model_type):
         "gpt_bigcode": "BigCodeBlock",
     }
 
-    return decoder_layer_table.get(model_type, "DecoderLayer")
+    return [
+        decoder_layer_table.get(model_type, "DecoderLayer"), "EncoderLayer"
+    ]
 
 
-def modify_decoder_layer(module: torch.nn.Module,
-                         suffix="DecoderLayer",
-                         n=1,
-                         counter=None):
+def modify_model_layers(module: torch.nn.Module,
+                        suffix_list: list[str],
+                        n=1,
+                        counter=None):
+    """Currently add mark_step at the end of specified layers.
+    """
 
     def forward_hook(module, args, output):
         htorch.core.mark_step()
@@ -161,48 +165,47 @@ def modify_decoder_layer(module: torch.nn.Module,
         counter = [0]
 
     for child_name, child_module in module.named_children():
-        if child_module.__class__.__name__.endswith(suffix):
+        if any(
+                child_module.__class__.__name__.endswith(layer)
+                for layer in suffix_list):
             counter[0] += 1
             if counter[0] % n == 0:
                 child_module.register_forward_hook(forward_hook)
         else:
-            modify_decoder_layer(child_module, suffix, n, counter)
+            modify_model_layers(child_module, suffix_list, n, counter)
 
 
-def get_names_for_rope(model: torch.nn.Module):
-    """Dynamically get layer names needed for cos and sin preparation for rope.
-
-    Every model can have a different naming convention for it's layers.
-    This function dynamically retrieves layer names to access rope layer.
-    If there's no rope layer, the function returns None.
-
-    This function assumes the following layer type layout:
-    Model -> ModuleList -> Attention -> RotaryEmbedding
+def get_path_to_rope(model: torch.nn.Module):
+    """Dynamically get the path to the RotaryEmbedding layer in the model.
+    This function will recursively search through the module hierarchy to find
+    a RotaryEmbedding layer and return the full path to that layer as a list
+    of names.
+    If no such layer is found, it returns None.
     """
 
-    def get_child(parent, suffix, is_list=False):
+    def find_rope_layer(parent, path):
+        # Base case: check if this parent is None
         if parent is None:
-            return None, None
-        parent = parent[0] if is_list else parent
-        for child_name, child_module in parent.named_children():
-            if child_module.__class__.__name__.endswith(suffix):
-                return child_name, child_module
-        return None, None
+            return None
 
-    model_name, model_module = get_child(model, "Model")
-    layers_name, layers_module = get_child(model_module, "ModuleList")
-    attn_name, attn_module = get_child(layers_module,
-                                       "Attention",
-                                       is_list=True)
-    rope_name, _ = get_child(attn_module, "RotaryEmbedding")
+        # Check if the current layer is a RotaryEmbedding
+        if hasattr(parent, 'named_children'):
+            for child_name, child_module in parent.named_children():
+                # If the current child is of type RotaryEmbedding,
+                # return the full path
+                if child_module.__class__.__name__.endswith("RotaryEmbedding"):
+                    return path + [child_name]
+                # Otherwise, recurse into this child to check its children
+                result = find_rope_layer(child_module, path + [child_name])
+                if result is not None:
+                    return result
+        return None
 
-    if rope_name is not None:
-        return {
-            'model_name': model_name,
-            'layers_name': layers_name,
-            'attn_name': attn_name,
-            'rope_name': rope_name
-        }
+    # Start the search from the top level model
+    path_to_rope = find_rope_layer(model, [])
+
+    # Return the result if found, otherwise None
+    return path_to_rope
 
 
 class HpuModelAdapter:
@@ -212,6 +215,8 @@ class HpuModelAdapter:
         self.prefill_use_fusedsdpa = os.getenv('VLLM_PROMPT_USE_FUSEDSDPA',
                                                '1').lower() in ['1', 'true'] \
                                                 and not is_fake_hpu()
+        self.recompute_cos_sin = os.getenv('VLLM_COS_SIN_RECOMPUTE',
+                                           'false').lower() in ['1', 'true']
         self.block_size = block_size
         self.dtype = dtype
         self.layer_names = layer_names
@@ -353,17 +358,32 @@ class HpuModelAdapter:
         return attn_metadata
 
     def _prepare_cos_sin(self, positions):
-        model_name = self.layer_names['model_name']
-        layers_name = self.layer_names['layers_name']
-        attn_name = self.layer_names['attn_name']
-        rope_name = self.layer_names['rope_name']
+        """Navigate through the model using the provided path and call
+        the prepare_cos_sin method on the 'RotaryEmbedding' layer."""
 
-        base_model = getattr(self.model, model_name)
-        first_model_layer = getattr(base_model, layers_name)[0]
-        attention_layer = getattr(first_model_layer, attn_name)
-        rope = getattr(attention_layer, rope_name)
+        current_module = self.model  # Start from the top level of the model
 
-        rope.prepare_cos_sin(positions)
+        for layer in self.layer_names:
+            if layer.isdigit():  # Check if the layer is an index
+                layer = int(layer)
+
+            # Check if the current layer is a name in a module
+            if isinstance(
+                    layer,
+                    str) and not isinstance(layer, int):  # Name-based access
+                current_module = getattr(current_module, layer)
+            elif isinstance(layer,
+                            int):  # Indexed-based access (like ModuleList)
+                current_module = list(current_module._modules.values())[layer]
+
+        # At the end, we should be at the RotaryEmbedding layer.
+        if hasattr(current_module, 'prepare_cos_sin'):
+            current_module.prepare_cos_sin(
+                positions, recompute_cos_sin=self.recompute_cos_sin)
+        else:
+            raise AttributeError(
+                "The module at the end of the path does not have \
+                a 'prepare_cos_sin' method.")
 
     def forward(self, *args, **kwargs):
         kwargs = kwargs.copy()
@@ -739,12 +759,13 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             hidden_layer_markstep_interval = int(
                 os.getenv('VLLM_CONFIG_HIDDEN_LAYERS', '1'))
             model_config = getattr(self.model, "config", None)
-            modify_decoder_layer(
+            modify_model_layers(
                 self.model,
-                get_decoder_layer_suffix(model_config.model_type if
-                                         model_config is not None else None),
+                get_target_layer_suffix_list(
+                    model_config.
+                    model_type if model_config is not None else None),
                 hidden_layer_markstep_interval)
-            names_for_rope = get_names_for_rope(self.model)
+            path_to_rope = get_path_to_rope(self.model)
             torch.hpu.synchronize()
 
             with HabanaMemoryProfiler() as m_wrap:
@@ -753,7 +774,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                     self.block_size,
                     dtype=self.model_config.dtype,
                     enforce_eager=self.enforce_eager,
-                    layer_names=names_for_rope)
+                    layer_names=path_to_rope)
             msg = f"Wrapping in HPU Graph took {m_wrap.get_summary_string()}"
             logger.info(msg)
 
@@ -960,7 +981,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         # Note: num_prefill_tokens is calculated using the length of
         # input_tokens after padding.
         num_prefill_tokens = input_tokens_tensor.numel()
-        if prefix_block_list_tensor:
+        if prefix_block_list_tensor is not None:
             prefix_block_list_tensor = prefix_block_list_tensor.to(
                 self.device, non_blocking=True)
         input_tokens_tensor = input_tokens_tensor.to(  # type: ignore
@@ -1989,7 +2010,7 @@ class HPUModelRunner(HPUModelRunnerBase[ModelInputForHPUWithSamplingMetadata]):
         This is a helper function to create the mask for lora computations.
         Lora Mask is needed to ensure we match the correct lora weights for the
         for the request.
-        For Prompt phase we have 
+        For Prompt phase we have
         lora_mask with shape (batch_size * seq_len, max_loras * max_rank)
         lora_logits_mask with shape (batch_size, max_loras * max_rank)
         For Decode phase we have both
