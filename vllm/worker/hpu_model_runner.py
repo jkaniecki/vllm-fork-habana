@@ -1032,14 +1032,6 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                      slot_mapping=slot_mapping,
                                      lora_ids=lora_ids)
 
-
-    def _prepare_cross_attn_states(
-        self,
-        seq_group_metadata_list: List[SequenceGroupMetadata],
-    ):
-        
-
-
     def _prepare_decode(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
@@ -1050,11 +1042,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         slot_mapping: List[List[int]] = []
         seq_lens: List[int] = []
         encoder_seq_lens: List[int] = []
+        cross_block_tables: List[List[int]] = []
+        cross_slot_mapping: List[int] = []
         block_tables: List[List[int]] = []
         lora_index_mapping: List[List[int]] = []
         lora_prompt_mapping: List[List[int]] = []
         lora_requests: Set[LoRARequest] = set()
 
+        is_enc_dec_model = self.model_config.is_encoder_decoder
         if len(seq_group_metadata_list) == 0:
             return PrepareDecodeMetadata.empty()
         lora_ids: List[int] = []
@@ -1069,11 +1064,15 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             seq_ids = list(seq_group_metadata.seq_data.keys())
             lora_id = seq_group_metadata.lora_int_id
             lora_ids.append(lora_id)
-            if seq_group_metadata.encoder_seq_data is not None:
-                encoder_seq_len = (
-                    seq_group_metadata.encoder_seq_data.get_len()
-                    if seq_group_metadata.encoder_seq_data else 0)
-                encoder_seq_lens.append(encoder_seq_len)
+            if is_enc_dec_model:
+                for _ in range(len(seq_group_metadata.seq_data)):
+                    encoder_seq_len = (
+                        seq_group_metadata.encoder_seq_data.get_len()
+                        if seq_group_metadata.encoder_seq_data else 0)
+                    encoder_seq_lens.append(encoder_seq_len)
+                    cross_block_table = seq_group_metadata.cross_block_table
+                    cross_block_tables.append([] if (
+                        cross_block_table is None) else cross_block_table)
 
             if lora_id > 0:
                 lora_requests.add(seq_group_metadata.lora_request)
@@ -1136,13 +1135,44 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_usage = [[self.block_size] * (len(bt) - 1) + [lbu]
                        for bt, lbu in zip(block_tables, last_block_usage)
                        if bt]
-
+        
         block_list = flatten(block_tables)
         block_groups = flatten(block_groups)
         block_usage = flatten(block_usage)
 
         assert len(block_list) == len(block_groups)
         assert len(block_list) == len(block_usage)
+
+        if is_enc_dec_model:
+            last_cross_block_usage = [(encoder_seq_len - 1) % self.block_size + 1
+                                for encoder_seq_len in encoder_seq_lens]
+            cross_block_groups = [[i] * len(bt)
+                            for i, bt in enumerate(cross_block_tables)]
+            cross_block_usage = [
+                [self.block_size] * (len(bt) - 1) + [lbu]
+                for bt, lbu in zip(cross_block_tables, last_cross_block_usage) if bt
+            ]
+
+            cross_block_list = flatten(cross_block_tables)
+            cross_block_groups = flatten(cross_block_groups)
+            cross_block_usage = flatten(cross_block_usage)
+
+            assert len(cross_block_list) == len(cross_block_groups)
+            assert len(cross_block_list) == len(cross_block_usage)
+
+            cross_block_list = torch.tensor(cross_block_list,
+                                        dtype=torch.int,
+                                        device='cpu')
+            cross_block_groups = torch.tensor(cross_block_groups,
+                                        dtype=torch.int,
+                                        device='cpu')
+            cross_block_usage = torch.tensor(cross_block_usage,
+                                        dtype=self.model_config.dtype,
+                                        device='cpu')
+        else:
+            cross_block_list = None
+            cross_block_groups = None
+            cross_block_usage = None
 
         padding_fn = None
         if self.use_contiguous_pa:
@@ -1164,7 +1194,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_list = padding_fn(block_list, _PAD_BLOCK_ID)
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
-
+        '''
         if len(encoder_seq_lens) > 0:
             real_batch_size = len(seq_group_metadata_list)
             batch_size_padded = self.bucketing_ctx.get_padded_batch_size(
@@ -1175,6 +1205,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                         for _ in range(batch_size_padding))
         else:
             encoder_seq_lens = None
+        '''
 
         block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
@@ -1206,6 +1237,13 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             self.device, non_blocking=True)
         slot_mapping = slot_mapping.to(  # type: ignore
             self.device, non_blocking=True)
+        if is_enc_dec_model:
+            cross_block_list = cross_block_list.to(  # type: ignore
+                self.device, non_blocking=True)
+            cross_block_groups = cross_block_groups.to(  # type: ignore
+                self.device, non_blocking=True)
+            cross_block_usage = cross_block_usage.to(  # type: ignore
+                self.device, non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
             is_prompt=False,
@@ -1220,6 +1258,9 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             seq_lens_tensor=None,
             encoder_seq_lens=encoder_seq_lens,
             encoder_seq_lens_tensor=encoder_seq_lens_tensor,
+            cross_block_list = cross_block_list,
+            cross_block_groups = cross_block_groups,
+            cross_block_usage = cross_block_usage,
             context_lens_tensor=None,
             num_prefills=0,
             num_prefill_tokens=0,

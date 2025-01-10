@@ -86,15 +86,15 @@ class HPUAttentionMetadata(HPUPagedAttentionMetadata, AttentionMetadata):
     seq_lens: Optional[List[int]] = None
     encoder_seq_lens: Optional[List[int]] = None
     encoder_seq_lens_tensor: Optional[torch.Tensor] = None
-    #cross_block_indices: Optional[torch.Tensor] = None
-    #cross_block_offsets: Optional[torch.Tensor] = None
+    cross_block_indices: Optional[torch.Tensor] = None
+    cross_block_offsets: Optional[torch.Tensor] = None
     cross_block_list: Optional[torch.Tensor] = None
     cross_slot_mapping: Optional[torch.Tensor] = None
-    #cross_block_mapping: Optional[torch.Tensor] = None
+    cross_block_mapping: Optional[torch.Tensor] = None
     cross_block_groups: Optional[torch.Tensor] = None
-    #cross_block_scales: Optional[torch.Tensor] = None
+    cross_block_scales: Optional[torch.Tensor] = None
     cross_block_usage: Optional[torch.Tensor] = None
-    #cross_attn_bias: Optional[torch.Tensor] = None
+    cross_attn_bias: Optional[torch.Tensor] = None
 
 
 class HPUAttentionImpl(AttentionImpl, torch.nn.Module):
