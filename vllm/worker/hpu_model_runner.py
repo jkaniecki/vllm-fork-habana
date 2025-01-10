@@ -1043,7 +1043,6 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         seq_lens: List[int] = []
         encoder_seq_lens: List[int] = []
         cross_block_tables: List[List[int]] = []
-        cross_slot_mapping: List[int] = []
         block_tables: List[List[int]] = []
         lora_index_mapping: List[List[int]] = []
         lora_prompt_mapping: List[List[int]] = []
@@ -1160,15 +1159,6 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             assert len(cross_block_list) == len(cross_block_groups)
             assert len(cross_block_list) == len(cross_block_usage)
 
-            cross_block_list = torch.tensor(cross_block_list,
-                                        dtype=torch.int,
-                                        device='cpu')
-            cross_block_groups = torch.tensor(cross_block_groups,
-                                        dtype=torch.int,
-                                        device='cpu')
-            cross_block_usage = torch.tensor(cross_block_usage,
-                                        dtype=self.model_config.dtype,
-                                        device='cpu')
         else:
             cross_block_list = None
             cross_block_groups = None
@@ -1194,8 +1184,24 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_list = padding_fn(block_list, _PAD_BLOCK_ID)
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
-        '''
-        if len(encoder_seq_lens) > 0:
+        
+        if is_enc_dec_model:
+            if self.use_contiguous_pa:
+                cross_block_bucket_size = max(max(cross_block_list) + 1, len(cross_block_list))
+                cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
+                    cross_block_bucket_size)
+                indices: List[Any]
+                indices = [None] * cross_block_bucket_size
+                for i, bid in enumerate(cross_block_list):
+                    indices[bid] = i
+                padding_fn = lambda tensor, pad_value: gather_list(
+                    tensor, indices, pad_value)
+            else:
+                cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
+                    len(cross_block_list))
+                padding_fn = lambda tensor, pad_value: pad_list(
+                    tensor, cross_block_bucket_size, pad_value)
+
             real_batch_size = len(seq_group_metadata_list)
             batch_size_padded = self.bucketing_ctx.get_padded_batch_size(
                 real_batch_size, False)
@@ -1203,9 +1209,21 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             if batch_size_padding > 0:
                 encoder_seq_lens.extend(encoder_seq_lens[0]
                                         for _ in range(batch_size_padding))
+            cross_block_list = padding_fn(cross_block_list, _PAD_BLOCK_ID)
+            cross_block_groups = padding_fn(cross_block_groups, -1)
+            cross_block_usage = padding_fn(cross_block_usage, 1)
+
+            cross_block_list = torch.tensor(cross_block_list,
+                                        dtype=torch.int,
+                                        device='cpu')
+            cross_block_groups = torch.tensor(cross_block_groups,
+                                        dtype=torch.int,
+                                        device='cpu')
+            cross_block_usage = torch.tensor(cross_block_usage,
+                                        dtype=self.model_config.dtype,
+                                        device='cpu')
         else:
             encoder_seq_lens = None
-        '''
 
         block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,

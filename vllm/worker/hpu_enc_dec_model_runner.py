@@ -436,7 +436,7 @@ class HPUEncoderDecoderModelRunner(
                                         is_prompt,
                                         lora_request=None,
                                         temperature=0):
-        sampling_params = SamplingParams(temperature)
+        sampling_params = SamplingParams(temperature=temperature)
         num_blocks = math.ceil(seq_len / self.block_size)
         cross_block_table: Optional[List[int]] = None
         encoder_dummy_data \
