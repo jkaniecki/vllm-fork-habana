@@ -576,11 +576,6 @@ class HPUEncoderDecoderModelRunner(
             torch.hpu.synchronize()
         if model_input.is_first_multi_step:
             # first multi-step
-            if self.lora_config:
-                assert model_input.lora_requests is not None
-                assert model_input.lora_mapping is not None
-                self.set_active_loras(model_input.lora_requests,
-                                      model_input.lora_mapping)
             input_tokens = model_input.input_tokens
             input_positions = model_input.input_positions
             attn_metadata = model_input.attn_metadata
@@ -598,13 +593,6 @@ class HPUEncoderDecoderModelRunner(
             use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
             self._check_config(batch_size, seq_len, is_prompt, warmup_mode)
 
-            lora_mask: torch.Tensor = None
-            lora_logits_mask: torch.Tensor = None
-            if self.lora_config:
-                assert model_input.lora_ids is not None
-                lora_mask, lora_logits_mask = self.create_lora_mask(
-                    input_tokens, model_input.lora_ids,
-                    attn_metadata.is_prompt)
 
             execute_model_kwargs = {
                 "input_ids": input_tokens,
@@ -612,7 +600,6 @@ class HPUEncoderDecoderModelRunner(
                 "kv_caches": kv_caches,
                 "attn_metadata": self.trim_attn_metadata(attn_metadata),
                 "intermediate_tensors": intermediate_tensors,
-                "lora_mask": lora_mask,
                 **(model_input.multi_modal_kwargs or {}),
             }
             if previous_hidden_states is not None:
