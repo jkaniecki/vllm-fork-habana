@@ -1134,7 +1134,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_usage = [[self.block_size] * (len(bt) - 1) + [lbu]
                        for bt, lbu in zip(block_tables, last_block_usage)
                        if bt]
-        
+
         block_list = flatten(block_tables)
         block_groups = flatten(block_groups)
         block_usage = flatten(block_usage)
@@ -1143,13 +1143,16 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         assert len(block_list) == len(block_usage)
 
         if is_enc_dec_model:
-            last_cross_block_usage = [(encoder_seq_len - 1) % self.block_size + 1
-                                for encoder_seq_len in encoder_seq_lens]
+            last_cross_block_usage = [
+                (encoder_seq_len - 1) % self.block_size + 1
+                for encoder_seq_len in encoder_seq_lens
+            ]
             cross_block_groups = [[i] * len(bt)
-                            for i, bt in enumerate(cross_block_tables)]
+                                  for i, bt in enumerate(cross_block_tables)]
             cross_block_usage = [
                 [self.block_size] * (len(bt) - 1) + [lbu]
-                for bt, lbu in zip(cross_block_tables, last_cross_block_usage) if bt
+                for bt, lbu in zip(cross_block_tables, last_cross_block_usage) 
+                if bt
             ]
             cross_block_list = flatten(cross_block_tables)
             cross_block_groups = flatten(cross_block_groups)
@@ -1161,7 +1164,6 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             cross_block_list = None
             cross_block_groups = None
             cross_block_usage = None
-            encoder_seq_lens = None
             encoder_seq_lens_tensor = None
 
         padding_fn = None
@@ -1184,14 +1186,14 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         block_list = padding_fn(block_list, _PAD_BLOCK_ID)
         block_groups = padding_fn(block_groups, -1)
         block_usage = padding_fn(block_usage, 1)
-        
+
         if is_enc_dec_model:
             if self.use_contiguous_pa:
-                cross_block_bucket_size = max(max(cross_block_list) + 1, 
-                                              len(cross_block_list)) if cross_block_list else 0
+                cross_block_bucket_size = max(
+                    max(cross_block_list) + 1, 
+                    len(cross_block_list)) if cross_block_list else 0
                 cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
                     cross_block_bucket_size)
-                indices: List[Any]
                 indices = [None] * cross_block_bucket_size
                 for i, bid in enumerate(cross_block_list):
                     indices[bid] = i
@@ -1215,17 +1217,17 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             cross_block_usage = padding_fn(cross_block_usage, 1)
 
             cross_block_list = torch.tensor(cross_block_list,
-                                        dtype=torch.int,
-                                        device='cpu')
+                                            dtype=torch.int,
+                                            device='cpu')
             cross_block_groups = torch.tensor(cross_block_groups,
-                                        dtype=torch.int,
-                                        device='cpu')
+                                              dtype=torch.int,
+                                              device='cpu')
             cross_block_usage = torch.tensor(cross_block_usage,
-                                        dtype=self.model_config.dtype,
-                                        device='cpu')
+                                             dtype=self.model_config.dtype,
+                                             device='cpu')
             encoder_seq_lens_tensor = torch.tensor(encoder_seq_lens,
-                                        dtype=torch.long,
-                                        device='cpu')
+                                                   dtype=torch.long,
+                                                   device='cpu')
 
         block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
@@ -1273,9 +1275,9 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             seq_lens_tensor=None,
             encoder_seq_lens=encoder_seq_lens,
             encoder_seq_lens_tensor=encoder_seq_lens_tensor,
-            cross_block_list = cross_block_list,
-            cross_block_groups = cross_block_groups,
-            cross_block_usage = cross_block_usage,
+            cross_block_list=cross_block_list,
+            cross_block_groups=cross_block_groups,
+            cross_block_usage=cross_block_usage,
             context_lens_tensor=None,
             num_prefills=0,
             num_prefill_tokens=0,
