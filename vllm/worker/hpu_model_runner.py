@@ -1192,7 +1192,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 cross_block_bucket_size = max(
                     max(cross_block_list) + 1, 
                     len(cross_block_list)) if cross_block_list else 0
-                cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
+                cross_block_bucket_size = \
+                    self.bucketing_ctx.get_padded_decode_num_blocks(
                     cross_block_bucket_size)
                 indices = [None] * cross_block_bucket_size
                 for i, bid in enumerate(cross_block_list):
@@ -1200,7 +1201,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 padding_fn = lambda tensor, pad_value: gather_list(
                     tensor, indices, pad_value)
             else:
-                cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
+                cross_block_bucket_size = \
+                    self.bucketing_ctx.get_padded_decode_num_blocks(
                     len(cross_block_list))
                 padding_fn = lambda tensor, pad_value: pad_list(
                     tensor, cross_block_bucket_size, pad_value)
