@@ -1151,11 +1151,9 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                 [self.block_size] * (len(bt) - 1) + [lbu]
                 for bt, lbu in zip(cross_block_tables, last_cross_block_usage) if bt
             ]
-
             cross_block_list = flatten(cross_block_tables)
             cross_block_groups = flatten(cross_block_groups)
             cross_block_usage = flatten(cross_block_usage)
-
             assert len(cross_block_list) == len(cross_block_groups)
             assert len(cross_block_list) == len(cross_block_usage)
 
@@ -1163,6 +1161,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             cross_block_list = None
             cross_block_groups = None
             cross_block_usage = None
+            encoder_seq_lens = None
+            encoder_seq_lens_tensor = None
 
         padding_fn = None
         if self.use_contiguous_pa:
@@ -1187,7 +1187,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         
         if is_enc_dec_model:
             if self.use_contiguous_pa:
-                cross_block_bucket_size = max(max(cross_block_list) + 1, len(cross_block_list))
+                cross_block_bucket_size = max(max(cross_block_list) + 1, 
+                                              len(cross_block_list)) if cross_block_list else 0
                 cross_block_bucket_size = self.bucketing_ctx.get_padded_decode_num_blocks(
                     cross_block_bucket_size)
                 indices: List[Any]
@@ -1222,8 +1223,9 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             cross_block_usage = torch.tensor(cross_block_usage,
                                         dtype=self.model_config.dtype,
                                         device='cpu')
-        else:
-            encoder_seq_lens = None
+            encoder_seq_lens_tensor = torch.tensor(encoder_seq_lens,
+                                        dtype=torch.long,
+                                        device='cpu')
 
         block_list = torch.tensor(block_list, dtype=torch.int, device='cpu')
         block_groups = torch.tensor(block_groups,
@@ -1235,13 +1237,6 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         slot_mapping = torch.tensor(slot_mapping,
                                     dtype=torch.long,
                                     device='cpu')
-        
-        if encoder_seq_lens is not None:
-            encoder_seq_lens_tensor = torch.tensor(encoder_seq_lens,
-                                        dtype=torch.long,
-                                        device='cpu')
-            encoder_seq_lens_tensor = encoder_seq_lens_tensor.to(  # type: ignore
-                self.device, non_blocking=True)
 
         input_tokens = input_tokens.to(  # type: ignore
             self.device, non_blocking=True)
@@ -1261,6 +1256,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
             cross_block_groups = cross_block_groups.to(  # type: ignore
                 self.device, non_blocking=True)
             cross_block_usage = cross_block_usage.to(  # type: ignore
+                self.device, non_blocking=True)
+            encoder_seq_lens_tensor = encoder_seq_lens_tensor.to(  # type: ignore
                 self.device, non_blocking=True)
 
         attn_metadata = self.attn_backend.make_metadata(
