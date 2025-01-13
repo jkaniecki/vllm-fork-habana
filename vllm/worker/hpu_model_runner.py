@@ -1151,7 +1151,7 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
                                   for i, bt in enumerate(cross_block_tables)]
             cross_block_usage = [
                 [self.block_size] * (len(bt) - 1) + [lbu]
-                for bt, lbu in zip(cross_block_tables, last_cross_block_usage) 
+                for bt, lbu in zip(cross_block_tables, last_cross_block_usage)
                 if bt
             ]
             cross_block_list = flatten(cross_block_tables)
@@ -1190,8 +1190,8 @@ class HPUModelRunnerBase(ModelRunnerBase[TModelInputForHPU]):
         if is_enc_dec_model:
             if self.use_contiguous_pa:
                 cross_block_bucket_size = max(
-                    max(cross_block_list) + 1, 
-                    len(cross_block_list)) if cross_block_list else 0
+                    max(cross_block_list) +
+                    1, len(cross_block_list)) if cross_block_list else 0
                 cross_block_bucket_size = \
                     self.bucketing_ctx.get_padded_decode_num_blocks(
                     cross_block_bucket_size)
