@@ -27,7 +27,6 @@ from vllm.worker.model_runner_base import (
     _add_sampling_metadata_broadcastable_dict)
 from vllm.distributed import broadcast_tensor_dict
 
-
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
 
@@ -540,7 +539,6 @@ class HPUEncoderDecoderModelRunner(
             logger.warning("Configuration: (%s, %s, %s) was not warmed-up!",
                            phase, batch_size, seq_len)
 
-
     def add_dummy_seq(self, seq_group_metadata_list, is_prompt):
         real_batch_size = len(seq_group_metadata_list)
         batch_size_padded = self.bucketing_ctx.get_padded_batch_size(
@@ -553,7 +551,6 @@ class HPUEncoderDecoderModelRunner(
             seq_group_metadata_list.extend(dummy_seq_group_metadata
                                            for _ in range(batch_size_padding))
         return seq_group_metadata_list
-
 
     @torch.inference_mode()
     def execute_model(
@@ -592,7 +589,6 @@ class HPUEncoderDecoderModelRunner(
             seq_len = self._seq_len(attn_metadata)
             use_graphs = self._use_graphs(batch_size, seq_len, is_prompt)
             self._check_config(batch_size, seq_len, is_prompt, warmup_mode)
-
 
             execute_model_kwargs = {
                 "input_ids": input_tokens,
@@ -776,7 +772,6 @@ class HPUEncoderDecoderModelRunner(
 
         return output if type(output) is list else [output]
 
-
     def _decode_sampler_outputs(self, model_input):
         use_async_out_proc = model_input.async_callback is not None
         sampler_outputs = []
@@ -805,7 +800,6 @@ class HPUEncoderDecoderModelRunner(
             return [sampler_outputs[-1]]
         else:
             return sampler_outputs
-
 
     def _make_decode_output(
         self,
