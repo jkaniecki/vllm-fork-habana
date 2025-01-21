@@ -606,12 +606,11 @@ class ModelConfig:
             self.max_seq_len_to_capture = self.max_model_len
         self.max_seq_len_to_capture = min(self.max_seq_len_to_capture,
                                           self.max_model_len)
-        from vllm.platforms import current_platform
-        MODEL_NOT_SUPPORT_CUDA_GRAPH = ['deepseek_v3'] if \
-            current_platform.is_hpu() else ['deepseek_v3', 'mllama']
+
         MODEL_NOT_SUPPORT_CUDA_GRAPH = ['deepseek_v3', 'mllama']
+        from vllm.platforms import current_platform
         if (self.hf_config.model_type in MODEL_NOT_SUPPORT_CUDA_GRAPH
-                and not self.enforce_eager):
+                and not self.enforce_eager and not current_platform.is_hpu()):
             logger.warning(
                 "CUDA graph is not supported for %s yet, fallback to the eager "
                 "mode.", self.hf_config.model_type)
